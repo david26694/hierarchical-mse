@@ -50,20 +50,32 @@ The true per-group Hessian block is `H_b = I + (kappa_b/n_b) * J`, eigenvalues `
 `test_lam_zero_reproduces_builtin_l2` asserts this end to end. If it fails, the problem is plumbing — row
 alignment, gradient sign, init score — not the loss.
 
-## Known limitation, deliberately documented
+## What is and is not demonstrated
 
-Raising `lam` does **not** reliably improve held-out accuracy with high-capacity learners. Measured on the
-test DGP, held-out loss degrades monotonically in `lam` (3.68 at `lam=0` to 4.57 at the default 71), because
-`MSE_between` is supported on only `B` groups and a converged boosted ensemble memorizes training group means
-(0.13 train vs 5.86 valid). This is asserted in `test_between_component_overfits_on_held_out_groups` and
-documented in the README's "When this helps" section.
+**Linear models: the loss works.** With `Ridge` under a binding penalty, `augment()` raises held-out
+`rho_between` (0.792 -> 0.866 at `alpha=3e5`) and, after per-level recalibration, cuts the loss by 32%.
+Asserted in `tests/test_linear.py`.
 
-Do not "fix" this by weakening the test or softening the README. If a change makes the overfitting test fail,
-that is a real result worth investigating and writing up.
+**Critically, loss-trained predictors are miscalibrated by construction.** The loss reallocates capacity
+toward group means, driving the between-group slope of `y` on `g` away from 1 (measured `theta_m = 32.6` vs
+9.4 for MSE). Raw squared error punishes that scale error, so on raw metrics the loss looks *worse* even
+when it carries more information. Recalibrating per level is what converts the gain. Anyone evaluating this
+library without that step will wrongly conclude it does nothing.
 
-The loss is designed for learners where capacity binds; the source paper demonstrates gains with Ridge under
-a fixed penalty (~0% to ~40% as the penalty tightens). Finding an equivalent capacity-binding regime for
-LightGBM is open work.
+**LightGBM: no benefit found.** Across `lam`, learning rate, rounds, group weights, `nbar`, and seven
+capacity budgets with per-method lr tuning, `lam=0` was never beaten. Recalibration does not rescue it --
+the boosted models come out already calibrated (`theta_m ~ 1.0`) with *lower* `rho_between`, and the
+post-calibration optimum depends on the predictor only through its correlations. Mechanism appears to be
+overfitting: `MSE_between` is supported on only `B` groups and a converged ensemble memorizes training group
+means (0.13 train vs 5.86 valid). Asserted in `test_between_component_overfits_on_held_out_groups`.
+
+Do not "fix" the LightGBM result by weakening tests or softening the README. If a change makes the
+overfitting test fail, that is a real result worth investigating and writing up.
+
+**Open work.** The negative LightGBM result is measured on one DGP whose group-level signal sits in two
+clean group-constant features -- plain MSE already reaches the between-group ceiling there, so nothing needs
+reallocating. A DGP where the group signal is genuinely hard to extract (a high-order interaction of
+group-level features, needing many splits) has not been tried and might behave differently.
 
 ## Commands
 
