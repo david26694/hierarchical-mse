@@ -1,0 +1,26 @@
+src/hierarchical_mse/__init__.py
+  s_92dacadf8cc2fc::t_5cc3a045381fc9 20-21
+  s_92dacadf8cc2fc::t_678d36a42c5a9e 1-19,22-56
+src/hierarchical_mse/groups.py
+  s_92dacadf8cc2fc::t_ded30026a26237 42-49
+  s_92dacadf8cc2fc::t_b64a0a30894d41 103
+  s_92dacadf8cc2fc::t_619498fc062fa2 1-41,50-102,104-131
+src/hierarchical_mse/loss.py
+  s_92dacadf8cc2fc::t_f99e2894381553 1-176
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "e2c404c4883ffdba2016aacbe8d3a2f515bd5e58",
+  "prompts": {},
+  "sessions": {
+    "s_92dacadf8cc2fc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9115434e-f095-45ef-9902-2c4996f539c1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "david26694 <david26694@gmail.com>"
+    }
+  }
+}
