@@ -52,6 +52,25 @@ booster = lgb.train(
 )
 ```
 
+### Linear models — exact, and no LightGBM needed
+
+For any model **linear in the features** the loss reduces to plain weighted least squares on one extra row
+per group, because `g(X̄_b) = ḡ_b`. So it trains exactly with any sklearn estimator that takes
+`sample_weight`:
+
+```python
+from sklearn.linear_model import ElasticNet, Ridge
+from hierarchical_mse import GroupIndex, augment
+
+idx = GroupIndex(groups, lam=50.0)
+model = Ridge(alpha=1e4).fit(*augment(X, y, idx))       # exact, verified to 2e-16
+model = ElasticNet(alpha=0.01).fit(*augment(X, y, idx))
+```
+
+This identity is *exact* — the augmented weighted SSE and the loss differ by a single constant factor, and
+the fit matches a direct numerical minimizer to 1e-8. It fails for trees (`g(mean(x)) != mean(g(x))`), which
+is why the LightGBM path needs a custom gradient.
+
 Without LightGBM, the loss is usable directly:
 
 ```python
@@ -66,39 +85,63 @@ rho_between(y, pred, idx)  # between-group correlation of y and pred
 
 ## When this helps — and when it doesn't
 
-**Read this before adopting it.** The loss, its gradient and Hessian, and the LightGBM integration are
-verified correct (59 tests, including that `λ=0` reproduces LightGBM's built-in `l2` bit-for-bit). Whether
-raising `λ` *helps* is a separate question, and the honest answer is: **it depends on whether model capacity
-binds, and with a flexible learner it can actively hurt.**
+**Read this before adopting it.** Everything here is measured on a synthetic two-level DGP (400 groups,
+`n̄=40`, `cv=1.5`, 12 weak within-group features + 2 group-level features), with held-out **groups** and a
+fixed λ yardstick. The headline: **it works for linear models under a binding penalty, and did not help
+LightGBM in any regime tested.**
 
-Measured on a synthetic two-level DGP (400 groups, `n̄=40`, `cv=1.5`, boosting to convergence with
-group-wise holdout and best-round selection), held-out loss against a fixed yardstick:
+### Linear models: it works, but you must recalibrate
 
-| training λ | held-out loss | ρ_between |
-|---|---|---|
-| **0 (plain l2)** | **3.6846** | **0.8943** |
-| 0.5 | 3.6870 | 0.8946 |
-| 2.0 | 3.7092 | 0.8938 |
-| 5.0 | 3.7112 | 0.8940 |
-| 20.0 | 4.0692 | 0.8849 |
-| 71.0 (the default) | 4.5739 | 0.8711 |
+With `Ridge` and a tight penalty (so capacity genuinely binds), the loss raises between-group predictive
+quality substantially:
 
-λ monotonically *hurts* here. The mechanism is overfitting: `MSE_between` is supported on only `B` groups, so
-up-weighting it by λ concentrates the objective on a small effective sample, and a boosted ensemble run to
-convergence drives the *training* group-mean residuals to near zero (0.13 train vs 5.86 valid) without
-generalizing. This is asserted as a test (`test_between_component_overfits_on_held_out_groups`) rather than
-hidden.
+| Ridge alpha | ρ_between (MSE) | ρ_between (loss) | loss after recalibration |
+|---|---|---|---|
+| 1 000 | 0.9177 | 0.9099 | −8.5% (MSE wins) |
+| 30 000 | 0.8645 | **0.8768** | **+8.8%** |
+| 100 000 | 0.8163 | **0.8688** | **+26.2%** |
+| 300 000 | 0.7921 | **0.8659** | **+32.4%** |
 
-The loss is designed for learners where **capacity genuinely binds** — the source paper demonstrates it with
-Ridge under a fixed penalty, where gains grow from ~0% to ~40% as the penalty tightens. Boosting with enough
-rounds is not capacity-limited, which removes the very trade-off the loss exists to rebalance.
+Note the two columns disagree at first: on *raw* squared error the loss looks worse everywhere. That is not a
+contradiction — it is the point. The loss deliberately reallocates capacity toward group means, which drives
+the between-group regression slope of `y` on `g` away from 1 (measured: **θ_m = 32.6** at alpha=3e5, versus
+9.4 for MSE). Raw squared error punishes that scale error even though the prediction carries *more
+information* about group means.
 
-So:
+So a loss-trained predictor is **miscalibrated by construction**. Fit a slope per level and the extra
+information converts into a 32% improvement:
 
-- **Try it** when your learner is genuinely constrained (few rounds, strong regularization, small linear
-  models), when `B` is large, and when group means are well-estimated (large `n_b`).
-- **Be skeptical** with high-capacity models trained to convergence. Validate against `λ=0` on a group-wise
-  holdout before believing any gain; treat λ as a hyperparameter to tune downward, not a constant to adopt.
+```python
+gb = idx.group_mean(g); gw = g - gb[idx.codes]      # within / between components
+theta_w = (gw @ yw) / (gw @ gw)                      # fit on training data
+theta_m = (gc @ yc) / (gc @ gc)                      # gc, yc = centred group means
+calibrated = y.mean() + theta_w * gw + theta_m * (gb[idx.codes] - gb.mean())
+```
+
+Skip this step and the loss will look useless. Both effects are asserted in `tests/test_linear.py`.
+
+### LightGBM: no benefit found
+
+Across λ (0 → 71), learning rate, rounds, group weights, `n̄`, and seven capacity budgets with per-method
+learning-rate tuning, **`λ=0` was never beaten**. At the default λ, held-out loss degrades from 3.68 to 4.57.
+Recalibration does not rescue it: the LightGBM models come out already calibrated (θ_m ≈ 1.0) with *lower*
+ρ_between (0.858 vs 0.892), and after optimal per-level rescaling the achievable loss depends on the
+predictor only through its correlations — so a lower ρ cannot be recovered.
+
+The mechanism appears to be overfitting: `MSE_between` is supported on only `B` groups, and a converged
+boosted ensemble drives the *training* group-mean residuals to near zero (0.13 train vs 5.86 valid). This is
+asserted in `test_between_component_overfits_on_held_out_groups` rather than hidden.
+
+**This is a negative result on one DGP, not a proof.** In this data the group-level signal sits in two clean
+group-constant features, so plain MSE already reaches the between-group ceiling and there is nothing to
+reallocate. A DGP where the group signal is genuinely *hard* to extract might behave differently; that is
+untested.
+
+### Practical guidance
+
+- **Linear + real regularization** is the demonstrated use case. Recalibrate per level afterwards.
+- **Boosted trees:** validate against `λ=0` on a group-wise holdout before believing any gain. Do not assume
+  it transfers.
 - **The default `λ = n̄(1+cv²)` is aggressive** for general use. It is the variance-optimal value for a
   specific experimental-design problem (below), not a good general prior.
 

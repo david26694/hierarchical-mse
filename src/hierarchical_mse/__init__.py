@@ -31,6 +31,7 @@ from __future__ import annotations
 
 from .groups import GroupIndex
 from .lgbm import lgbm_eval, lgbm_objective
+from .linear import augment, group_mean_matrix
 from .loss import (
     LossParts,
     grad_hess,
@@ -44,6 +45,8 @@ __version__ = "0.1.0"
 
 __all__ = [
     "GroupIndex",
+    "augment",
+    "group_mean_matrix",
     "LossParts",
     "__version__",
     "grad_hess",
