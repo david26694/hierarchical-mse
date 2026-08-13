@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Install
+        run: uv sync --all-extras --group dev --python ${{ matrix.python-version }}
+      - name: Lint
+        run: uv run ruff check .
+      - name: Format check
+        run: uv run ruff format --check .
+      - name: Test
+        run: uv run pytest -q
+
+  test-without-lightgbm:
+    # the core loss must stay pure numpy (invariant 3 in CLAUDE.md)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Install without the lightgbm extra
+        run: uv sync --group dev --no-extra lightgbm
+      - name: Test (lightgbm tests skip themselves)
+        run: uv run pytest -q -k "not lgbm"
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv build
+      - name: Import from the built wheel, without the extra
+        run: |
+          uv run --isolated --no-project --with numpy --with dist/*.whl \
+            python -c "import hierarchical_mse as m; print(m.__version__)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
