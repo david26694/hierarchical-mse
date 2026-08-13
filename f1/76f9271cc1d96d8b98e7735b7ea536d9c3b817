@@ -1,0 +1,19 @@
+README.md
+  s_d0316328f0b88a::t_9e39c45c956531 66,115-118
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "f176f9271cc1d96d8b98e7735b7ea536d9c3b817",
+  "prompts": {},
+  "sessions": {
+    "s_d0316328f0b88a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "s_d0316328f0b88a",
+        "model": "unknown"
+      },
+      "human_author": "david26694 <david26694@gmail.com>"
+    }
+  }
+}
