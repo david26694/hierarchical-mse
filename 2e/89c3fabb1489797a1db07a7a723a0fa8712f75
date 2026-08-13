@@ -1,0 +1,27 @@
+src/hierarchical_mse/linear.py
+  s_92dacadf8cc2fc::t_5997a12f8ccdbd 1-37,39-94
+  s_92dacadf8cc2fc::t_f32c2ab71464c0 38
+README.md
+  s_92dacadf8cc2fc::t_6dbf244c806bc5 57,65,88-144
+  s_92dacadf8cc2fc::t_5ab089276c39a6 55-56,58-64,66-73
+src/hierarchical_mse/__init__.py
+  s_92dacadf8cc2fc::t_dc0bfaaa8caf9d 34,48-49
+tests/test_linear.py
+  s_92dacadf8cc2fc::t_323000cc53074d 1-142
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "2e89c3fabb1489797a1db07a7a723a0fa8712f75",
+  "prompts": {},
+  "sessions": {
+    "s_92dacadf8cc2fc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9115434e-f095-45ef-9902-2c4996f539c1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "david26694 <david26694@gmail.com>"
+    }
+  }
+}
