@@ -63,7 +63,7 @@ from sklearn.linear_model import ElasticNet, Ridge
 from hierarchical_mse import GroupIndex, augment
 
 idx = GroupIndex(groups, lam=50.0)
-model = Ridge(alpha=1e4).fit(*augment(X, y, idx))       # exact, verified to 2e-16
+model = Ridge(alpha=1e4).fit(*augment(X, y, idx))  # exact, verified to 2e-16
 model = ElasticNet(alpha=0.01).fit(*augment(X, y, idx))
 ```
 
@@ -112,9 +112,10 @@ So a loss-trained predictor is **miscalibrated by construction**. Fit a slope pe
 information converts into a 32% improvement:
 
 ```python
-gb = idx.group_mean(g); gw = g - gb[idx.codes]      # within / between components
-theta_w = (gw @ yw) / (gw @ gw)                      # fit on training data
-theta_m = (gc @ yc) / (gc @ gc)                      # gc, yc = centred group means
+gb = idx.group_mean(g)
+gw = g - gb[idx.codes]  # within / between components
+theta_w = (gw @ yw) / (gw @ gw)  # fit on training data
+theta_m = (gc @ yc) / (gc @ gc)  # gc, yc = centred group means
 calibrated = y.mean() + theta_w * gw + theta_m * (gb[idx.codes] - gb.mean())
 ```
 
