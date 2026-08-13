@@ -1,0 +1,33 @@
+LICENSE
+  s_92dacadf8cc2fc::t_84f969037ea8ca 1-21
+hessian-bound.md
+  s_92dacadf8cc2fc::t_eb551c65a62cf2 1-189
+pyproject.toml
+  s_92dacadf8cc2fc::t_a988a48e1d8d4d 1-52
+.gitignore
+  s_92dacadf8cc2fc::t_5f7edd5aa53cc1 1-40
+.python-version
+  s_92dacadf8cc2fc::t_9be9f8efd94cbf 1
+ruff.toml
+  s_92dacadf8cc2fc::t_52fa550fd1d828 1-9
+plan.md
+  s_92dacadf8cc2fc::t_eb551c65a62cf2 1-280
+uv.lock
+  s_92dacadf8cc2fc::t_9f6a0f56f3648e 1-767
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "8c20ecc02d49e2465bc5022d1f141b6d39872081",
+  "prompts": {},
+  "sessions": {
+    "s_92dacadf8cc2fc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9115434e-f095-45ef-9902-2c4996f539c1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "david26694 <david26694@gmail.com>"
+    }
+  }
+}
