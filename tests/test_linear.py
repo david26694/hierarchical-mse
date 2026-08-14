@@ -158,3 +158,42 @@ def test_loss_training_produces_a_miscalibrated_predictor():
         Ridge(alpha=alpha).fit(*augment(train.X, train.y, idx)).predict(train.X)
     )
     assert loss_slope > mse_slope > 1.0
+
+
+def test_loss_beats_mse_when_the_group_signal_is_expensive():
+    """The existence proof: a regime where the loss genuinely wins, fairly measured.
+
+    Each method is tuned to its own best alpha, and validation is an entirely
+    independent draw of groups -- so neither the shared-hyperparameter confound nor
+    a shared-groups leak can explain it.
+
+    The contrast with `make_grouped_data` is the whole lesson: there the group signal
+    is two strong clean features, MSE reaches the ceiling for free, and no loss can
+    help. Here it takes 20 weak features to recover, so capacity genuinely binds.
+    """
+    from hierarchical_mse import rho_between
+
+    from .conftest import make_hard_grouped_data
+
+    train = make_hard_grouped_data(seed=0)
+    valid = make_hard_grouped_data(seed=1)
+    idx_tr = GroupIndex(train.groups)
+    idx_va = GroupIndex(valid.groups, lam=idx_tr.lam)
+    X_aug, y_aug, w = augment(train.X, train.y, idx_tr)
+
+    def best(use_loss):
+        scores = []
+        for alpha in (1e0, 1e2, 1e3, 3e3, 1e4, 3e4):
+            fit = (
+                Ridge(alpha=alpha).fit(X_aug, y_aug, sample_weight=w)
+                if use_loss
+                else Ridge(alpha=alpha).fit(train.X, train.y)
+            )
+            pred = fit.predict(valid.X)
+            scores.append((power_loss(valid.y, pred, idx_va), rho_between(valid.y, pred, idx_va)))
+        return min(scores)
+
+    loss_best, loss_rho = best(True)
+    mse_best, mse_rho = best(False)
+    assert loss_best < mse_best, "loss should win on held-out loss when capacity binds"
+    assert loss_rho > mse_rho, "and on between-group correlation"

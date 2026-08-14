@@ -85,56 +85,68 @@ rho_between(y, pred, idx)  # between-group correlation of y and pred
 
 ## When this helps — and when it doesn't
 
-**Read this before adopting it.** Everything here is measured on a synthetic two-level DGP (400 groups,
-`n̄=40`, `cv=1.5`, 12 weak within-group features + 2 group-level features), with held-out **groups** and a
-fixed λ yardstick. The headline: **it works for linear models under a binding penalty, and did not help
-LightGBM in any regime tested.**
+**It depends on the learner, and it depends on whether the group signal is expensive to extract.** Both
+findings below are on synthetic data with held-out **groups**, each method tuned to its own best
+regularization strength.
 
-### Linear models: no benefit either, once each method is tuned
+### The deciding factor: is there anything to reallocate?
 
-An earlier version of this README claimed a +32% improvement for Ridge. **That was an artifact and has been
-retracted.** It came from comparing both methods at the *same* `alpha`, deep in an over-regularized regime.
-`normalize=True` equalizes total sample weight but **not** effective regularization: the group-mean rows have
-much smaller feature variance (within-group noise averages out), so at equal `alpha` the loss-trained fit is
-shrunk far harder — 36x compression of predicted group means versus 13x for MSE. The apparent win was "the
-loss degrades more gracefully when both models are wrecked," not "the loss is better."
+The loss reallocates capacity from within-group fit toward between-group fit. That can only help if
+recovering the group signal actually *costs* capacity. Two DGPs, identical except for how the group signal
+is carried:
 
-Tuning `alpha` per method on a group-wise holdout removes the confound:
+| group signal carried by | can the loss help? |
+|---|---|
+| 2 strong, clean group-level features | **No.** Plain MSE reaches the between-group ceiling for free; there is nothing to reallocate, and no setting of λ helps any learner. |
+| 20 weak group-level features | **Yes, for linear models.** Recovering the signal costs real coefficient budget, which must compete with numerous strong row-level features. |
+
+Benchmarking only on the first DGP produced two successive wrong conclusions in this repo's history. If you
+evaluate this loss, check first whether plain MSE is already at the ceiling — if it is, the loss cannot help
+and the benchmark is uninformative.
+
+### Linear models: it works, when capacity binds
+
+On the second DGP (`make_hard_grouped_data` in the tests), Ridge with each method at its own best `alpha`,
+validated on an entirely independent draw of groups:
 
 | | MSE-trained | loss-trained |
 |---|---|---|
-| best raw held-out loss | **2.9450** (alpha=100) | 3.1416 (alpha=100) |
-| best after per-level calibration | **2.9510** (alpha=1000) | 3.2029 (alpha=1000) |
-| best rho_between | **0.9177** | 0.9099 |
+| held-out loss | 18.26 (alpha=3000) | **16.70** (alpha=3000) — **8.6% better** |
+| ρ_between | 0.7373 | **0.7656** |
 
-MSE wins on every metric. Note the last row in particular: properly tuned MSE reaches a *higher* between-group
-correlation than the loss attains at any `alpha`, so this is not a scale problem that recalibration could fix.
+Both methods select the same `alpha`, and the loss has higher ρ_between at all 12 alphas tested. No
+recalibration is needed for this win. Asserted in `test_loss_beats_mse_when_the_group_signal_is_expensive`.
 
-What remains true, and is still asserted in `tests/test_linear.py`: at a **fixed** heavy penalty the
-loss-trained model does retain more between-group information (rho 0.866 vs 0.792 at alpha=3e5), and it is
-badly miscalibrated by construction (between-group slope 32.6 vs 9.4). Both are real. Neither amounts to a
-benefit once each method is allowed its own regularization strength.
+### LightGBM: it does not transfer
 
-### Summary of the evidence
+On that **same** DGP, with the same λ and per-method learning-rate tuning:
 
-On this DGP, **the loss has not been shown to beat plain MSE for any learner tested**, linear or boosted,
-once each method is tuned fairly. The implementation is verified correct -- `lam=0` reproduces LightGBM's
-built-in `l2` bit-for-bit, and the linear augmentation matches a direct minimizer to 1e-8 -- but correctness
-of the objective is not evidence that the objective is useful here.
+| learner | MSE-trained | loss-trained |
+|---|---|---|
+| Ridge | 18.26 / ρ 0.737 | **16.70 / ρ 0.766** |
+| LightGBM (`hessian="bound"`) | **19.18 / ρ 0.722** | 22.72 / ρ 0.662 |
+| LightGBM (`hessian="diag"`) | — | 35.28 / ρ 0.559 |
 
-This is one synthetic DGP, and its group-level signal sits in two clean group-constant features, so plain MSE
-already reaches the between-group ceiling and there is nothing to reallocate. A DGP where the group signal is
-genuinely hard to extract remains untested and might behave differently.
+Same data, same objective, opposite outcome — so this is specific to the tree learner, not the loss.
+
+The likely mechanism is memorization. The group-level features are **constant within group**, so a tree can
+split finely on them and identify individual training groups; the λ-weighted between term then rewards
+memorizing their means (measured elsewhere: 0.13 train vs 5.86 valid). A linear model is structurally immune,
+being unable to isolate individual groups regardless of weighting. This is a plausible mechanism consistent
+with the measurements, not something proven.
+
+Note also that `diag` is far worse than `bound`, which rules out the Hessian bound's damping as the cause:
+relaxing the damping makes things dramatically worse, not better.
 
 ### Practical guidance
 
-- **Benchmark against `λ=0` before adopting anything**, on a group-wise holdout, with the regularization
-  strength tuned *separately for each method*. Comparing at a shared hyperparameter is what produced the
-  retracted result above.
-- **Recalibrate per level** before comparing, since the loss produces miscalibrated predictors by
-  construction -- but do not expect recalibration alone to create a benefit.
+- **Linear models with real regularization** are the demonstrated use case.
+- **Boosted trees: don't.** No configuration tested beat `λ=0`.
+- **Before adopting anything**, benchmark against `λ=0` on a group-wise holdout with the regularization
+  strength tuned *separately per method*, and check that plain MSE is not already at the between-group
+  ceiling.
 - **The default `λ = n̄(1+cv²)` is aggressive** for general use. It is the variance-optimal value for a
-  specific experimental-design problem (below), not a good general prior.
+  specific experimental-design problem (below), not a general prior.
 
 ## Three things that will bite you
 

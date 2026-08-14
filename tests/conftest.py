@@ -61,6 +61,54 @@ def make_grouped_data(
     return GroupedData(X=np.column_stack(columns), y=y, groups=groups, feature_names=names)
 
 
+def make_hard_grouped_data(
+    seed: int,
+    n_groups: int = 400,
+    nbar: float = 40.0,
+    cv: float = 1.5,
+    s_between: float = 0.30,
+    n_within: int = 30,
+    n_between: int = 20,
+    between_loading: float = 0.25,
+) -> GroupedData:
+    """A DGP where extracting the group signal genuinely COSTS capacity.
+
+    The difference from :func:`make_grouped_data` is the group-level features: many
+    (20) *weak* ones rather than two strong clean ones. Recovering ``M_b`` then
+    requires spending real coefficient budget, which has to compete with the
+    numerous strong row-level features -- so a within-versus-between trade-off
+    actually binds.
+
+    This distinction decides the outcome. On :func:`make_grouped_data` no loss can
+    help, because plain MSE already reaches the between-group ceiling for free and
+    there is nothing to reallocate. Benchmarks run only on that DGP produced two
+    successive wrong conclusions; see the README.
+    """
+    rng = np.random.default_rng(seed)
+    sigma = np.sqrt(np.log(1.0 + cv**2))
+    rates = np.exp(rng.normal(np.log(nbar) - sigma**2 / 2, sigma, n_groups))
+    sizes = np.maximum(rng.poisson(rates), 2)
+    groups = np.repeat(np.arange(n_groups), sizes)
+    n = groups.size
+
+    between_signal = rng.normal(size=n_groups)
+    between_signal /= between_signal.std()
+    within_signal = rng.normal(size=n)
+    y = np.sqrt(s_between) * between_signal[groups] + np.sqrt(1 - s_between) * within_signal
+
+    columns, names = [], []
+    for j in range(n_within):  # strong and numerous: where the squared-error mass is
+        columns.append(0.8 * within_signal + 0.6 * rng.normal(size=n))
+        names.append(f"within_{j}")
+    for j in range(n_between):  # weak and group-constant: expensive to combine
+        columns.append(
+            between_loading * between_signal[groups]
+            + np.sqrt(1 - between_loading**2) * rng.normal(size=n_groups)[groups]
+        )
+        names.append(f"between_{j}")
+    return GroupedData(X=np.column_stack(columns), y=y, groups=groups, feature_names=names)
+
+
 def split_by_group(data: GroupedData, frac: float = 0.5) -> tuple[GroupedData, GroupedData]:
     """Split into two disjoint sets of whole groups (never split a group across sets)."""
     unique = np.unique(data.groups)
