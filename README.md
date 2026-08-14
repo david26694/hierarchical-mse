@@ -90,59 +90,49 @@ rho_between(y, pred, idx)  # between-group correlation of y and pred
 fixed λ yardstick. The headline: **it works for linear models under a binding penalty, and did not help
 LightGBM in any regime tested.**
 
-### Linear models: it works, but you must recalibrate
+### Linear models: no benefit either, once each method is tuned
 
-With `Ridge` and a tight penalty (so capacity genuinely binds), the loss raises between-group predictive
-quality substantially:
+An earlier version of this README claimed a +32% improvement for Ridge. **That was an artifact and has been
+retracted.** It came from comparing both methods at the *same* `alpha`, deep in an over-regularized regime.
+`normalize=True` equalizes total sample weight but **not** effective regularization: the group-mean rows have
+much smaller feature variance (within-group noise averages out), so at equal `alpha` the loss-trained fit is
+shrunk far harder — 36x compression of predicted group means versus 13x for MSE. The apparent win was "the
+loss degrades more gracefully when both models are wrecked," not "the loss is better."
 
-| Ridge alpha | ρ_between (MSE) | ρ_between (loss) | loss after recalibration |
-|---|---|---|---|
-| 1 000 | 0.9177 | 0.9099 | −8.5% (MSE wins) |
-| 30 000 | 0.8645 | **0.8768** | **+8.8%** |
-| 100 000 | 0.8163 | **0.8688** | **+26.2%** |
-| 300 000 | 0.7921 | **0.8659** | **+32.4%** |
+Tuning `alpha` per method on a group-wise holdout removes the confound:
 
-Note the two columns disagree at first: on *raw* squared error the loss looks worse everywhere. That is not a
-contradiction — it is the point. The loss deliberately reallocates capacity toward group means, which drives
-the between-group regression slope of `y` on `g` away from 1 (measured: **θ_m = 32.6** at alpha=3e5, versus
-9.4 for MSE). Raw squared error punishes that scale error even though the prediction carries *more
-information* about group means.
+| | MSE-trained | loss-trained |
+|---|---|---|
+| best raw held-out loss | **2.9450** (alpha=100) | 3.1416 (alpha=100) |
+| best after per-level calibration | **2.9510** (alpha=1000) | 3.2029 (alpha=1000) |
+| best rho_between | **0.9177** | 0.9099 |
 
-So a loss-trained predictor is **miscalibrated by construction**. Fit a slope per level and the extra
-information converts into a 32% improvement:
+MSE wins on every metric. Note the last row in particular: properly tuned MSE reaches a *higher* between-group
+correlation than the loss attains at any `alpha`, so this is not a scale problem that recalibration could fix.
 
-```python
-gb = idx.group_mean(g)
-gw = g - gb[idx.codes]  # within / between components
-theta_w = (gw @ yw) / (gw @ gw)  # fit on training data
-theta_m = (gc @ yc) / (gc @ gc)  # gc, yc = centred group means
-calibrated = y.mean() + theta_w * gw + theta_m * (gb[idx.codes] - gb.mean())
-```
+What remains true, and is still asserted in `tests/test_linear.py`: at a **fixed** heavy penalty the
+loss-trained model does retain more between-group information (rho 0.866 vs 0.792 at alpha=3e5), and it is
+badly miscalibrated by construction (between-group slope 32.6 vs 9.4). Both are real. Neither amounts to a
+benefit once each method is allowed its own regularization strength.
 
-Skip this step and the loss will look useless. Both effects are asserted in `tests/test_linear.py`.
+### Summary of the evidence
 
-### LightGBM: no benefit found
+On this DGP, **the loss has not been shown to beat plain MSE for any learner tested**, linear or boosted,
+once each method is tuned fairly. The implementation is verified correct -- `lam=0` reproduces LightGBM's
+built-in `l2` bit-for-bit, and the linear augmentation matches a direct minimizer to 1e-8 -- but correctness
+of the objective is not evidence that the objective is useful here.
 
-Across λ (0 → 71), learning rate, rounds, group weights, `n̄`, and seven capacity budgets with per-method
-learning-rate tuning, **`λ=0` was never beaten**. At the default λ, held-out loss degrades from 3.68 to 4.57.
-Recalibration does not rescue it: the LightGBM models come out already calibrated (θ_m ≈ 1.0) with *lower*
-ρ_between (0.858 vs 0.892), and after optimal per-level rescaling the achievable loss depends on the
-predictor only through its correlations — so a lower ρ cannot be recovered.
-
-The mechanism appears to be overfitting: `MSE_between` is supported on only `B` groups, and a converged
-boosted ensemble drives the *training* group-mean residuals to near zero (0.13 train vs 5.86 valid). This is
-asserted in `test_between_component_overfits_on_held_out_groups` rather than hidden.
-
-**This is a negative result on one DGP, not a proof.** In this data the group-level signal sits in two clean
-group-constant features, so plain MSE already reaches the between-group ceiling and there is nothing to
-reallocate. A DGP where the group signal is genuinely *hard* to extract might behave differently; that is
-untested.
+This is one synthetic DGP, and its group-level signal sits in two clean group-constant features, so plain MSE
+already reaches the between-group ceiling and there is nothing to reallocate. A DGP where the group signal is
+genuinely hard to extract remains untested and might behave differently.
 
 ### Practical guidance
 
-- **Linear + real regularization** is the demonstrated use case. Recalibrate per level afterwards.
-- **Boosted trees:** validate against `λ=0` on a group-wise holdout before believing any gain. Do not assume
-  it transfers.
+- **Benchmark against `λ=0` before adopting anything**, on a group-wise holdout, with the regularization
+  strength tuned *separately for each method*. Comparing at a shared hyperparameter is what produced the
+  retracted result above.
+- **Recalibrate per level** before comparing, since the loss produces miscalibrated predictors by
+  construction -- but do not expect recalibration alone to create a benefit.
 - **The default `λ = n̄(1+cv²)` is aggressive** for general use. It is the variance-optimal value for a
   specific experimental-design problem (below), not a good general prior.
 

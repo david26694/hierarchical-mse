@@ -52,30 +52,38 @@ alignment, gradient sign, init score — not the loss.
 
 ## What is and is not demonstrated
 
-**Linear models: the loss works.** With `Ridge` under a binding penalty, `augment()` raises held-out
-`rho_between` (0.792 -> 0.866 at `alpha=3e5`) and, after per-level recalibration, cuts the loss by 32%.
-Asserted in `tests/test_linear.py`.
+**No learner tested has been shown to benefit from `lam > 0` on the test DGP, once each method is tuned
+fairly.** Linear and boosted alike. Correctness of the objective is established; usefulness is not.
 
-**Critically, loss-trained predictors are miscalibrated by construction.** The loss reallocates capacity
-toward group means, driving the between-group slope of `y` on `g` away from 1 (measured `theta_m = 32.6` vs
-9.4 for MSE). Raw squared error punishes that scale error, so on raw metrics the loss looks *worse* even
-when it carries more information. Recalibrating per level is what converts the gain. Anyone evaluating this
-library without that step will wrongly conclude it does nothing.
+**Ridge (retracted claim).** An earlier README reported +32% for the loss. It was an artifact of comparing
+both methods at the *same* `alpha`. `normalize=True` equalizes total sample weight but **not** effective
+regularization -- group-mean rows have much smaller feature variance, so at equal `alpha` the loss-trained
+fit is shrunk far harder (36x vs 13x compression of predicted group means). Tuned per method:
+MSE 2.9450 / rho 0.9177 versus loss 3.1416 / rho 0.9099. MSE wins raw, calibrated, and on rho. Asserted in
+`test_fixed_penalty_comparison_is_misleading`, which pins *both* the tempting fixed-alpha result and its
+refutation.
 
-**LightGBM: no benefit found.** Across `lam`, learning rate, rounds, group weights, `nbar`, and seven
-capacity budgets with per-method lr tuning, `lam=0` was never beaten. Recalibration does not rescue it --
-the boosted models come out already calibrated (`theta_m ~ 1.0`) with *lower* `rho_between`, and the
-post-calibration optimum depends on the predictor only through its correlations. Mechanism appears to be
-overfitting: `MSE_between` is supported on only `B` groups and a converged ensemble memorizes training group
-means (0.13 train vs 5.86 valid). Asserted in `test_between_component_overfits_on_held_out_groups`.
+**LightGBM.** Across `lam`, learning rate, rounds, group weights, `nbar`, and seven capacity budgets with
+per-method lr tuning, `lam=0` was never beaten. Per-level recalibration does not rescue it -- the boosted
+models come out already calibrated (`theta_m ~ 1.0`) with *lower* `rho_between`. Asserted in
+`test_between_component_overfits_on_held_out_groups`.
 
-Do not "fix" the LightGBM result by weakening tests or softening the README. If a change makes the
-overfitting test fail, that is a real result worth investigating and writing up.
+**Still true and worth keeping.** Loss-trained predictors are miscalibrated by construction (between-group
+slope 32.6 vs 9.4 at fixed heavy alpha), so anyone comparing on raw squared error without per-level
+recalibration is measuring scale, not information. This is real; it just does not produce a net benefit.
 
-**Open work.** The negative LightGBM result is measured on one DGP whose group-level signal sits in two
-clean group-constant features -- plain MSE already reaches the between-group ceiling there, so nothing needs
-reallocating. A DGP where the group signal is genuinely hard to extract (a high-order interaction of
-group-level features, needing many splits) has not been tried and might behave differently.
+### Rules for any future benchmark here
+
+1. **Tune the regularization strength separately for each method.** Comparing at a shared hyperparameter is
+   what produced the retracted result.
+2. **Split holdouts by group**, never by row.
+3. **Report raw and recalibrated**, not whichever is favourable.
+4. Do not weaken a failing negative-result test. If one starts failing, that is a finding -- investigate and
+   write it up.
+
+**Open work.** The DGP's group-level signal sits in two clean group-constant features, so plain MSE already
+reaches the between-group ceiling and there is nothing to reallocate. A DGP where the group signal is
+genuinely hard to extract (a high-order interaction of group-level features) is untested.
 
 ## Commands
 

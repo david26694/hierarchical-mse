@@ -91,12 +91,21 @@ def test_raises_on_shape_mismatch(small_data):
         group_mean_matrix(small_data.X[:-1], idx)
 
 
-def test_binding_capacity_raises_between_group_correlation():
-    """The mechanism, end to end: under a tight penalty the loss buys between-group fit.
+def test_fixed_penalty_comparison_is_misleading():
+    """At a FIXED heavy penalty the loss looks better -- and that comparison is invalid.
 
-    This is the linear counterpart of the LightGBM tests, and unlike those it
-    *succeeds* -- which is the evidence that the loss itself is sound and the
-    negative LightGBM result is specific to trees. See the README.
+    Two facts, asserted together because either alone misleads:
+
+    1. At ``alpha=3e5`` the loss-trained model really does retain more between-group
+       information (higher ``rho_between``).
+    2. But MSE tuned to its *own* best alpha beats the loss at *any* alpha, on
+       ``rho_between``. So (1) is "degrades more gracefully when both models are
+       wrecked", not "is better".
+
+    ``normalize=True`` equalizes total sample weight but not effective regularization:
+    the group-mean rows have much smaller feature variance, so at equal alpha the
+    loss-trained fit is shrunk far harder. An earlier README claimed a +32% win from
+    exactly this comparison; it was retracted.
     """
     from hierarchical_mse import rho_between
 
@@ -107,13 +116,22 @@ def test_binding_capacity_raises_between_group_correlation():
     idx_tr = GroupIndex(train.groups)
     idx_va = GroupIndex(valid.groups, lam=idx_tr.lam)
 
-    alpha = 3e5  # tight enough that capacity genuinely binds
-    mse_fit = Ridge(alpha=alpha).fit(train.X, train.y)
-    loss_fit = Ridge(alpha=alpha).fit(*augment(train.X, train.y, idx_tr))
+    def rho_at(alpha, use_loss):
+        fit = (
+            Ridge(alpha=alpha).fit(*augment(train.X, train.y, idx_tr))
+            if use_loss
+            else Ridge(alpha=alpha).fit(train.X, train.y)
+        )
+        return rho_between(valid.y, fit.predict(valid.X), idx_va)
 
-    rho_mse = rho_between(valid.y, mse_fit.predict(valid.X), idx_va)
-    rho_loss = rho_between(valid.y, loss_fit.predict(valid.X), idx_va)
-    assert rho_loss > rho_mse + 0.02
+    # (1) at one fixed, heavy alpha the loss looks better
+    assert rho_at(3e5, True) > rho_at(3e5, False) + 0.02
+
+    # (2) but tuned per method, MSE wins outright
+    alphas = [1e-2, 1e0, 1e2, 1e3, 1e4, 3e4, 1e5, 3e5, 1e6]
+    best_mse = max(rho_at(a, False) for a in alphas)
+    best_loss = max(rho_at(a, True) for a in alphas)
+    assert best_mse > best_loss, "if this ever fails, the retraction should be revisited"
 
 
 def test_loss_training_produces_a_miscalibrated_predictor():
