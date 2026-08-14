@@ -1,0 +1,26 @@
+benchmarks/compare.py
+  s_92dacadf8cc2fc::t_e0e459b93294c2 1-139
+  s_92dacadf8cc2fc::t_11478045a65473 140-158
+README.md
+  s_92dacadf8cc2fc::t_d3c9bd960ad02e 90-94
+hessian-bound.md
+  s_92dacadf8cc2fc::t_cbfa860cd92eec 171-179
+plan.md
+  s_92dacadf8cc2fc::t_9e70cce0abad72 3-7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "1170ecadd922066b6ac863d84d0c6fef92d4dd96",
+  "prompts": {},
+  "sessions": {
+    "s_92dacadf8cc2fc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9115434e-f095-45ef-9902-2c4996f539c1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "david26694 <david26694@gmail.com>"
+    }
+  }
+}
