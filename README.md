@@ -87,7 +87,11 @@ rho_between(y, pred, idx)  # between-group correlation of y and pred
 
 **It depends on the learner, and it depends on whether the group signal is expensive to extract.** Both
 findings below are on synthetic data with held-out **groups**, each method tuned to its own best
-regularization strength.
+regularization strength. Every number in this section is reproduced by:
+
+```
+uv run python benchmarks/compare.py
+```
 
 ### The deciding factor: is there anything to reallocate?
 

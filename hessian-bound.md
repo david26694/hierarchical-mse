@@ -168,8 +168,15 @@ then compute the next round's gradients from stale predictions. Driving the loop
 round with `keep_training_booster`, refitting leaves and re-deriving scores each iteration — is a real
 complexity jump and version-sensitive in the way that rots.
 
-The bound is already exact on group-pure leaves, so this only recovers the mixed-leaf damping. Let test **T6**
-decide whether that is worth the fragility.
+The bound is already exact on group-pure leaves, so this only recovers the mixed-leaf damping -- and the
+measurements below suggest that is not where LightGBM's problem lies.
+
+**Empirical confirmation of D1.** Running both modes end to end (`benchmarks/compare.py`, hard DGP, learning
+rate tuned per mode) gives held-out loss **22.72 for `bound` versus 35.28 for `diag`** -- and 25.76 versus
+60.80 at 31 leaves. The exact diagonal is dramatically worse in practice, exactly as the majorization
+argument predicts. This also rules out over-damping as the explanation for LightGBM's poor showing on this
+loss: *relaxing* the damping makes things much worse, not better. A constant Hessian (`hess = 1`) damps less
+still and would be worse again.
 
 ---
 

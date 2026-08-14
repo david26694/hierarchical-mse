@@ -1,5 +1,10 @@
 # hierarchical-mse — build plan
 
+> **Historical document.** This is the plan the package was built from, kept as a record of the design
+> decisions and why they were made. Some expectations in it did not survive contact with the data — in
+> particular the assumption that the loss would improve held-out accuracy for LightGBM. See the README for
+> what is actually established, and `benchmarks/compare.py` to reproduce it.
+
 ## Context
 
 A regression loss for **grouped data where between-group accuracy matters more than per-row accuracy**.
