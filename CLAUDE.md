@@ -68,9 +68,13 @@ per-method lr tuning, `lam=0` was never beaten. Per-level recalibration does not
 models come out already calibrated (`theta_m ~ 1.0`) with *lower* `rho_between`. Asserted in
 `test_between_component_overfits_on_held_out_groups`.
 
-**Still true and worth keeping.** Loss-trained predictors are miscalibrated by construction (between-group
-slope 32.6 vs 9.4 at fixed heavy alpha), so anyone comparing on raw squared error without per-level
-recalibration is measuring scale, not information. This is real; it just does not produce a net benefit.
+**Per-level recalibration: measured, and it does not matter.** An earlier version of this file claimed
+loss-trained predictors are "miscalibrated by construction". That was overstated. The dramatic
+miscalibration (between-group slope 32.6 vs 9.4) appears only at absurd regularization strengths; at each
+method's tuned alpha both models sit at `theta_m ~ 1.0`, so recalibration is nearly a no-op. It changes no
+verdict on either DGP -- hard DGP loss wins +8.6% raw and +11.2% recalibrated; easy DGP MSE wins either way.
+Reported by `benchmarks/compare.py`. Like the retracted Ridge claim, the miscalibration story was a *symptom*
+of the fixed-alpha comparison, not an independent finding.
 
 ### Rules for any future benchmark here
 

@@ -48,10 +48,30 @@ LGB_BASE = {
 }
 
 
+def _per_level_recalibrate(train, valid, idx_tr, idx_va, g_train, g_valid):
+    """Fit one slope per level on TRAIN, apply to held-out groups. Returns (pred, theta_m).
+
+    The loss can reallocate capacity toward group means in a way that distorts the
+    between-group slope, which raw squared error then punishes as a scale error. This
+    removes that confound. In practice, at sensible regularization strengths both models
+    come out near theta_m = 1 and this is close to a no-op -- the large miscalibration
+    reported in an earlier version of the README only occurred deep in an
+    over-regularized regime.
+    """
+    gb, yb = idx_tr.group_mean(g_train), idx_tr.group_mean(train.y)
+    gw, yw = g_train - gb[idx_tr.codes], train.y - yb[idx_tr.codes]
+    theta_w = (gw @ yw) / (gw @ gw)
+    gc, yc = gb - gb.mean(), yb - yb.mean()
+    theta_m = (gc @ yc) / (gc @ gc)
+    vb = idx_va.group_mean(g_valid)
+    vw = g_valid - vb[idx_va.codes]
+    return train.y.mean() + theta_w * vw + theta_m * (vb[idx_va.codes] - gb.mean()), theta_m
+
+
 def ridge_best(train, valid, idx_tr, idx_va, use_loss):
-    """Best held-out (loss, rho, alpha) over the alpha grid."""
+    """Best held-out (raw loss, rho, alpha, calibrated loss, theta_m) over the alpha grid."""
     augmented = augment(train.X, train.y, idx_tr) if use_loss else None
-    best = None
+    best = best_cal = None
     for alpha in RIDGE_ALPHAS:
         fit = (
             Ridge(alpha=alpha).fit(*augmented)
@@ -59,10 +79,16 @@ def ridge_best(train, valid, idx_tr, idx_va, use_loss):
             else Ridge(alpha=alpha).fit(train.X, train.y)
         )
         pred = fit.predict(valid.X)
-        cand = (power_loss(valid.y, pred, idx_va), rho_between(valid.y, pred, idx_va), alpha)
-        if best is None or cand[0] < best[0]:
-            best = cand
-    return best
+        cal, theta_m = _per_level_recalibrate(
+            train, valid, idx_tr, idx_va, fit.predict(train.X), pred
+        )
+        raw = power_loss(valid.y, pred, idx_va)
+        cal_loss = power_loss(valid.y, cal, idx_va)
+        if best is None or raw < best[0]:
+            best = (raw, rho_between(valid.y, pred, idx_va), alpha, theta_m)
+        if best_cal is None or cal_loss < best_cal:
+            best_cal = cal_loss
+    return (*best, best_cal)
 
 
 def lgbm_best(train, valid, idx_tr, idx_va, objective, hessian="bound", rounds=600):
@@ -126,8 +152,11 @@ def run(name, train, valid):
     print(f"{'learner':>28} | {'held-out loss':>13} {'rho_between':>12} {'tuned':>8}")
 
     for tag, use_loss in (("Ridge, MSE-trained", False), ("Ridge, loss-trained", True)):
-        loss, rho, hp = ridge_best(train, valid, idx_tr, idx_va, use_loss)
-        print(f"{tag:>28} | {loss:>13.4f} {rho:>12.4f} {f'a={hp:g}':>8}")
+        loss, rho, hp, theta_m, cal = ridge_best(train, valid, idx_tr, idx_va, use_loss)
+        print(
+            f"{tag:>28} | {loss:>13.4f} {rho:>12.4f} {f'a={hp:g}':>8}"
+            f"  (recalibrated {cal:.4f}, theta_m={theta_m:.2f})"
+        )
 
     try:
         import lightgbm  # noqa: F401

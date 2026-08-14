@@ -118,8 +118,15 @@ validated on an entirely independent draw of groups:
 | held-out loss | 18.26 (alpha=3000) | **16.70** (alpha=3000) — **8.6% better** |
 | ρ_between | 0.7373 | **0.7656** |
 
-Both methods select the same `alpha`, and the loss has higher ρ_between at all 12 alphas tested. No
-recalibration is needed for this win. Asserted in `test_loss_beats_mse_when_the_group_signal_is_expensive`.
+Both methods select the same `alpha`, and the loss has higher ρ_between at all 12 alphas tested. Asserted in
+`test_loss_beats_mse_when_the_group_signal_is_expensive`.
+
+**Recalibration is not needed and does not change the verdict.** Fitting one slope per level (on train,
+applied to held-out groups) gives 18.09 for MSE against **16.07** for the loss — the same winner, slightly
+wider margin. At these tuned alphas both models already sit at `θ_m ≈ 1.0`, so the rescale is nearly a no-op.
+An earlier version of this README leaned heavily on recalibration and reported a large miscalibration
+(`θ_m = 32.6`); that only occurs at absurd regularization strengths and was a symptom of the same fixed-alpha
+comparison that produced the retracted claim above.
 
 ### LightGBM: it does not transfer
 
